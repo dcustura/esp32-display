@@ -117,7 +117,7 @@ void lcd_draw_v_line(int x, int y_start, int y_end, uint16_t color)
 #define FONT_WIDTH 8
 #define FONT_HEIGHT 13
 
-void lcd_print_char(struct print_control_t * handle, char c)
+void lcd_print_normal_char(struct print_control_t * handle, char c)
 {
     const uint8_t * glyph = ascii_8x13_font[(int)(c - ' ')];
     int x = handle->x;
@@ -163,6 +163,34 @@ void lcd_print_char(struct print_control_t * handle, char c)
     {
         handle->x = handle->indent;
         handle->y += handle->line_height;
+    }
+}
+
+void lcd_print_control_char(struct print_control_t * handle, char c)
+{
+    switch (c)
+    {
+        case '\n':
+            handle->x = handle->indent;
+            handle->y += handle->line_height;
+            return;
+        case '\r':
+            handle->x = handle->indent;
+            return;
+        default:
+            lcd_print_normal_char(handle, ' ');
+            return;
+    }
+}
+
+void lcd_print_char(struct print_control_t * handle, char c)
+{
+    if (c >= ' ')
+    {
+        lcd_print_normal_char(handle, c);
+    }
+    else {
+        lcd_print_control_char(handle, c);
     }
 }
 

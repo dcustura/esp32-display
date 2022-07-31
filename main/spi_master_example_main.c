@@ -35,10 +35,10 @@ void app_main(void)
         .overstrike_color = color(0x404040),
     };
 
-    lcd_print(&pc, "The quick brown fox jumps over the lazy dog! ");
+    lcd_print(&pc, "The quick brown fox jumps over the lazy dog!\n");
     pc.color = color(0x000000);
     pc.overstrike_color = color(0xff0000);
-    lcd_print(&pc, "The Quick Brown Fox Jumps Over The Lazy Dog? ");
+    lcd_print(&pc, "The Quick Brown Fox Jumps Over The Lazy Dog?\n");
 
     for (;;)
         delay(1000);
