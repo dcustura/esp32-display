@@ -1,8 +1,8 @@
-set(srcs "pretty_effect.c"
+set(srcs
     "spi_master_example_main.c"
-    "decode_image.c"
+    "ascii_8x13.h"
+    "ascii_8x12.h"
     )
 
 idf_component_register(SRCS ${srcs}
-                    INCLUDE_DIRS "."
-                    EMBED_FILES image.jpg)
+                    INCLUDE_DIRS ".")
