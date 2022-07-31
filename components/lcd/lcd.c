@@ -124,22 +124,14 @@ void lcd_print_normal_char(struct print_control_t * handle, char c)
     int y = handle->y;
     uint16_t swapped_color = SPI_SWAP_DATA_TX(handle->color, 16);
     uint16_t swapped_background = SPI_SWAP_DATA_TX(handle->background, 16);
-    uint16_t swapped_overstrike = SPI_SWAP_DATA_TX(handle->overstrike_color, 16);
     lcd_set_write_frame(device, x, y, handle->column_width, handle->line_height);
     lcd_cmd_write_data(device);
-    for (int row = 0; row < FONT_HEIGHT + 1; row++)
+    for (int row = 0; row < FONT_HEIGHT; row++)
     {
         for (int col = 0; col < handle->column_width; col++)
         {
             pixel_buffer[col] = swapped_background;
-            if (row > 0 && col < FONT_WIDTH && ((glyph[row - 1] >> (FONT_WIDTH - 1 - col)) & 1)) {
-                pixel_buffer[col] = swapped_overstrike;
-            }
-            if (row < FONT_HEIGHT && col > 0 && col < FONT_WIDTH + 1 && ((glyph[row] >> (FONT_WIDTH - col)) & 1))
-            {
-                pixel_buffer[col] = swapped_overstrike;
-            }
-            if (row < FONT_HEIGHT && col < FONT_WIDTH && ((glyph[row] >> (FONT_WIDTH - 1 - col)) & 1))
+            if (col < FONT_WIDTH && ((glyph[row] >> (FONT_WIDTH - 1 - col)) & 1))
             {
                 pixel_buffer[col] = swapped_color;
             }
@@ -150,7 +142,7 @@ void lcd_print_normal_char(struct print_control_t * handle, char c)
     {
         set16(pixel_buffer, handle->background, handle->column_width);
     }
-    for (int i = FONT_HEIGHT + 1; i < handle->line_height; i++)
+    for (int i = FONT_HEIGHT; i < handle->line_height; i++)
     {
         lcd_send(device, pixel_buffer, handle->column_width * 2, 1);
     }

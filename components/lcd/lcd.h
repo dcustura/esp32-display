@@ -20,7 +20,6 @@ struct print_control_t
     int line_height;
     uint16_t color;
     uint16_t background;
-    uint16_t overstrike_color;
 };
 
 void lcd_init(void);
