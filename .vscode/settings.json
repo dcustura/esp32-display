@@ -5,7 +5,8 @@
     "task.h": "c",
     "freertos.h": "c",
     "*.inc": "c",
-    "*.ipp": "c"
+    "*.ipp": "c",
+    "chrono": "c"
   },
   "idf.openOcdConfigs": [
     "interface/ftdi/esp32_devkitj_v1.cfg",

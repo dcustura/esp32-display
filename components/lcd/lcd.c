@@ -7,7 +7,9 @@
 #include "esp_system.h"
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
-#include "ascii_8x13.h"
+#include "driver/sigmadelta.h"
+//#include "ascii_8x13.h"
+#include "font_12x16.h"
 
 #define LCD_HOST HSPI_HOST
 
@@ -19,8 +21,8 @@
 #define PIN_NUM_RST 23
 #define PIN_NUM_BCKL 4
 
-#define LCD_X_OFFS 40
-#define LCD_Y_OFFS 53
+#define LCD_X_OFFS (orientation == LANDSCAPE ? 40 : 52)
+#define LCD_Y_OFFS (orientation == LANDSCAPE ? 53 : 40)
 
 #define delay(milliseconds) vTaskDelay((milliseconds) / portTICK_RATE_MS)
 
@@ -51,7 +53,17 @@
 #define lcd_cmd_write_data(device) lcd_cmd((device), 0x2C)
 
 static spi_device_handle_t device;
-static uint16_t pixel_buffer[LCD_WIDTH];
+
+#define BUFFER_SIZE (LCD_LONG_WIDTH * LCD_SHORT_WIDTH)
+static uint16_t pixel_buffer[BUFFER_SIZE];
+
+typedef enum
+{
+    PORTRAIT,
+    LANDSCAPE
+} lcd_orientation_t;
+
+static lcd_orientation_t orientation = LANDSCAPE;
 
 void lcd_send(spi_device_handle_t device, const void *data, int len, int dc)
 {
@@ -83,6 +95,11 @@ void IRAM_ATTR lcd_spi_pre_transfer_callback(spi_transaction_t *t)
     gpio_set_level(PIN_NUM_DC, (uint32_t)t->user);
 }
 
+void lcd_brightness(int value)
+{
+    sigmadelta_set_duty(SIGMADELTA_CHANNEL_0, value - 128);
+}
+
 void set16(uint16_t *dst, uint16_t color, int count)
 {
     uint16_t swapped_color = SPI_SWAP_DATA_TX(color, 16);
@@ -92,34 +109,50 @@ void set16(uint16_t *dst, uint16_t color, int count)
     }
 }
 
-void lcd_draw_h_line(int x_start, int x_end, int y, uint16_t color)
+void lcd_fill_rectangle(int x, int y, int width, int height, uint16_t color)
 {
-    int xs = min(x_start, x_end);
-    int xe = max(x_start, x_end);
-    int line_length = xe - xs + 1;
-    set16(pixel_buffer, color, line_length);
-    lcd_set_write_frame(device, xs, y, line_length, 1);
+    int num_pixels = width * height;
+    set16(pixel_buffer, color, min(BUFFER_SIZE, num_pixels));
+    lcd_set_write_frame(device, x, y, width, height);
     lcd_cmd_write_data(device);
-    lcd_send(device, pixel_buffer, line_length * 2, 1);
+    int buffer_times = num_pixels / BUFFER_SIZE;
+    for (int i = 0; i < buffer_times; i++)
+    {
+        lcd_send(device, pixel_buffer, BUFFER_SIZE * 2, 1);
+    }
+    lcd_send(device, pixel_buffer, (num_pixels % BUFFER_SIZE) * 2, 1);
 }
 
-void lcd_draw_v_line(int x, int y_start, int y_end, uint16_t color)
+void lcd_draw_rectangle(int x, int y, int width, int height, uint16_t color)
 {
-    int ys = min(y_start, y_end);
-    int ye = max(y_start, y_end);
-    int line_length = ye - ys + 1;
-    set16(pixel_buffer, color, line_length);
-    lcd_set_write_frame(device, x, ys, 1, line_length);
-    lcd_cmd_write_data(device);
-    lcd_send(device, pixel_buffer, line_length * 2, 1);
+    lcd_fill_rectangle(x, y, width, 1, color);              // top line
+    lcd_fill_rectangle(x, y, 1, height, color);             // left line
+    lcd_fill_rectangle(x + width - 1, y, 1, height, color); // right line
+    lcd_fill_rectangle(x, y + height - 1, width, 1, color); // bottom line
 }
 
-#define FONT_WIDTH 8
-#define FONT_HEIGHT 13
+#define FONT_WIDTH 12
+#define FONT_HEIGHT 16
 
-void lcd_print_normal_char(struct print_control_t * handle, char c)
+void lcd_cursor_advance(struct print_control_t *handle)
 {
-    const uint8_t * glyph = ascii_8x13_font[(int)(c - ' ')];
+    int new_x = handle->x + handle->column_width;
+    if (new_x + FONT_WIDTH < LCD_WIDTH)
+    {
+        handle->x = new_x;
+    }
+    else
+    {
+        handle->x = handle->indent;
+        handle->y += handle->line_height;
+    }
+}
+
+void lcd_print_normal_char(struct print_control_t *handle, char c)
+{
+// ascii_8x13_font
+#define FONT console_font_12x16
+    const uint16_t *glyph = FONT[(int)(c - '!')];
     int x = handle->x;
     int y = handle->y;
     uint16_t swapped_color = SPI_SWAP_DATA_TX(handle->color, 16);
@@ -131,7 +164,7 @@ void lcd_print_normal_char(struct print_control_t * handle, char c)
         for (int col = 0; col < handle->column_width; col++)
         {
             pixel_buffer[col] = swapped_background;
-            if (col < FONT_WIDTH && ((glyph[row] >> (FONT_WIDTH - 1 - col)) & 1))
+            if (col < FONT_WIDTH && ((glyph[row] << col) & 0x8000))
             {
                 pixel_buffer[col] = swapped_color;
             }
@@ -146,47 +179,40 @@ void lcd_print_normal_char(struct print_control_t * handle, char c)
     {
         lcd_send(device, pixel_buffer, handle->column_width * 2, 1);
     }
-    int new_x = handle->x + handle->column_width;
-    if (new_x + FONT_WIDTH < LCD_WIDTH)
-    {
-        handle->x = new_x;
-    }
-    else
-    {
-        handle->x = handle->indent;
-        handle->y += handle->line_height;
-    }
+    lcd_cursor_advance(handle);
 }
 
-void lcd_print_control_char(struct print_control_t * handle, char c)
+void lcd_print_control_char(struct print_control_t *h, char c)
 {
     switch (c)
     {
-        case '\n':
-            handle->x = handle->indent;
-            handle->y += handle->line_height;
-            return;
-        case '\r':
-            handle->x = handle->indent;
-            return;
-        default:
-            lcd_print_normal_char(handle, ' ');
-            return;
+    case '\n':
+        h->x = h->indent;
+        h->y += h->line_height;
+        return;
+    case '\r':
+        h->x = h->indent;
+        return;
+    default:
+        lcd_fill_rectangle(h->x, h->y, h->column_width, h->line_height, h->background);
+        lcd_cursor_advance(h);
+        return;
     }
 }
 
-void lcd_print_char(struct print_control_t * handle, char c)
+void lcd_print_char(struct print_control_t *handle, char c)
 {
-    if (c >= ' ')
+    if (c > ' ')
     {
         lcd_print_normal_char(handle, c);
     }
-    else {
+    else
+    {
         lcd_print_control_char(handle, c);
     }
 }
 
-void lcd_print(struct print_control_t * handle, char *str)
+void lcd_print(struct print_control_t *handle, char *str)
 {
     for (char *ptr = str; *ptr != 0; ptr++)
     {
@@ -196,18 +222,52 @@ void lcd_print(struct print_control_t * handle, char *str)
 
 void lcd_clear(uint16_t color)
 {
-    set16(pixel_buffer, color, LCD_WIDTH);
-    lcd_set_write_frame(device, 0, 0, LCD_WIDTH, LCD_HEIGHT);
-    lcd_cmd_write_data(device);
-    for (int i = 0; i < LCD_HEIGHT; i++)
-    {
-        lcd_send(device, pixel_buffer, LCD_WIDTH * 2, 1);
-    }
+    lcd_fill_rectangle(0, 0, LCD_WIDTH, LCD_HEIGHT, color);
 }
 
 void lcd_display_on(void)
 {
     lcd_cmd(device, 0x29);
+}
+
+int lcd_get_height(void)
+{
+    return orientation == LANDSCAPE ? LCD_SHORT_WIDTH : LCD_LONG_WIDTH;
+}
+
+int lcd_get_width(void)
+{
+    return orientation == LANDSCAPE ? LCD_LONG_WIDTH : LCD_SHORT_WIDTH;
+}
+
+#define MY 0x80
+#define MX 0x40
+#define MV 0x20
+
+void lcd_landscape(int up_down)
+{
+    /* Memory Data Access Control, MV=1, MY/MX=1  ML=MH=0, RGB=0 */
+    lcd_cmd(device, 0x36, MV | (up_down ? MY : MX));
+    orientation = LANDSCAPE;
+}
+
+void lcd_portrait()
+{
+    lcd_cmd(device, 0x36, 0);
+    orientation = PORTRAIT;
+}
+
+void lcd_scroll_area(int y, int height)
+{
+    int top_fixed = 40 + y;
+    int bottom_fixed = 320 - top_fixed - height;
+    lcd_cmd(device, 0x33, hi(top_fixed), lo(top_fixed), hi(height), lo(height), hi(bottom_fixed), lo(bottom_fixed));
+}
+
+void lcd_scroll(int offset)
+{
+    int line_no = 40 + offset;
+    lcd_cmd(device, 0x37, hi(line_no), lo(line_no));
 }
 
 void lcd_init(void)
@@ -219,7 +279,7 @@ void lcd_init(void)
         .sclk_io_num = PIN_NUM_CLK,
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
-        //.max_transfer_sz = 0,
+        .max_transfer_sz = BUFFER_SIZE * 2,
     };
     spi_device_interface_config_t devcfg = {
         .clock_speed_hz = SPI_MASTER_FREQ_20M,
@@ -240,23 +300,33 @@ void lcd_init(void)
     gpio_set_direction(PIN_NUM_RST, GPIO_MODE_OUTPUT);
     gpio_set_direction(PIN_NUM_BCKL, GPIO_MODE_OUTPUT);
 
+    sigmadelta_config_t sigmadelta_cfg = {
+        .channel = SIGMADELTA_CHANNEL_0,
+        .sigmadelta_prescale = 80,
+        .sigmadelta_duty = 0,
+        .sigmadelta_gpio = PIN_NUM_BCKL,
+    };
+    sigmadelta_config(&sigmadelta_cfg);
+
+
     // Reset the display
     gpio_set_level(PIN_NUM_RST, 0);
     delay(100);
     gpio_set_level(PIN_NUM_RST, 1);
     delay(100);
 
-    /* Memory Data Access Control, MX=MV=1, MY=ML=MH=0, RGB=0 */
-    lcd_cmd(device, 0x36, 0x60);
+    lcd_landscape(0);
+
     /* Interface Pixel Format, 16bits/pixel for RGB/MCU interface */
     lcd_cmd(device, 0x3A, 0x55);
     /* Display Inversion On */
     lcd_cmd(device, 0x21);
+    lcd_cmd(device, 0x53, 0x04);
     /* Sleep Out */
     lcd_cmd(device, 0x11);
     delay(100);
 
     /// Enable backlight
-    gpio_set_level(PIN_NUM_BCKL, 1);
-
+    //gpio_set_level(PIN_NUM_BCKL, 1);
+    lcd_brightness(127);
 }
