@@ -12,6 +12,6 @@
     "interface/ftdi/esp32_devkitj_v1.cfg",
     "target/esp32.cfg"
   ],
-  "idf.port": "/dev/cu.usbserial-01DCEFE9",
+  "idf.port": "/dev/cu.usbserial-01DCF2C6",
   "idf.flashType": "UART"
 }

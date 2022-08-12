@@ -1,17 +1,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+extern "C" {
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
 #include "driver/gpio.h"
-#include "lcd.h"
+}
+#include "lcd.hpp"
 
 #define delay(milliseconds) vTaskDelay((milliseconds) / portTICK_RATE_MS)
 
 #define rnd ((uint32_t)rand())
 
-void my_task(void *ignore)
+void my_task(void* ignore)
 {
     lcd_init();
     lcd_clear(WHITE);
@@ -41,8 +44,8 @@ void my_task(void *ignore)
     pc.color = GRAY;
     lcd_print(&pc, "The Quick Brown Fox Jumps Over The Lazy Dog?\n");
 
-    //lcd_portrait();
-    //for (;;) delay(1000);
+    // lcd_portrait();
+    // for (;;) delay(1000);
 
     lcd_scroll_area(0, 240);
     for (;;)
@@ -56,7 +59,7 @@ void my_task(void *ignore)
     }
 }
 
-void app_main(void)
+extern "C" void app_main(void)
 {
     gpio_set_direction(GPIO_NUM_0, GPIO_MODE_INPUT);
     gpio_set_direction(GPIO_NUM_35, GPIO_MODE_INPUT);

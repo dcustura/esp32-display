@@ -1,3 +1,5 @@
+#pragma once
+
 #include <stdlib.h>
 
 #define LCD_LONG_WIDTH 240

@@ -1,3 +1,5 @@
+#pragma once
+
 static const uint16_t console_font_12x16[][16] = {
     /*
      * code=33, hex=0x21, ascii="!"

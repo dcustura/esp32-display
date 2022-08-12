@@ -1,15 +1,17 @@
-#include "lcd.h"
-
 #include <stdlib.h>
 #include <string.h>
+
+extern "C" {
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
 #include "driver/sigmadelta.h"
-//#include "ascii_8x13.h"
-#include "font_12x16.h"
+}
+
+#include "lcd.hpp"
+#include "font_12x16.hpp"
 
 #define LCD_HOST HSPI_HOST
 
@@ -31,8 +33,8 @@
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
-#define hi(a) ((a) >> 8)
-#define lo(a) ((a)&0xff)
+#define hi(a) ((uint8_t)((a) >> 8))
+#define lo(a) ((uint8_t)((a) & 0xff))
 
 #define lcd_cmd(dev, cmd, data...) ({             \
     uint8_t buffer[] = {data};                    \
@@ -65,7 +67,7 @@ typedef enum
 
 static lcd_orientation_t orientation = LANDSCAPE;
 
-void lcd_send(spi_device_handle_t device, const void *data, int len, int dc)
+void lcd_send(spi_device_handle_t device, const void *data, size_t len, int dc)
 {
     if (len == 0)
     {
@@ -92,7 +94,7 @@ void lcd_send(spi_device_handle_t device, const void *data, int len, int dc)
 // set the D/C line to the value indicated in the user field.
 void IRAM_ATTR lcd_spi_pre_transfer_callback(spi_transaction_t *t)
 {
-    gpio_set_level(PIN_NUM_DC, (uint32_t)t->user);
+    gpio_set_level((gpio_num_t) PIN_NUM_DC, (uint32_t)t->user);
 }
 
 void lcd_brightness(int value)
@@ -240,14 +242,14 @@ int lcd_get_width(void)
     return orientation == LANDSCAPE ? LCD_LONG_WIDTH : LCD_SHORT_WIDTH;
 }
 
-#define MY 0x80
-#define MX 0x40
-#define MV 0x20
+#define MY ((uint8_t) 0x80)
+#define MX ((uint8_t) 0x40)
+#define MV ((uint8_t) 0x20)
 
 void lcd_landscape(int up_down)
 {
     /* Memory Data Access Control, MV=1, MY/MX=1  ML=MH=0, RGB=0 */
-    lcd_cmd(device, 0x36, MV | (up_down ? MY : MX));
+    lcd_cmd(device, 0x36, (uint8_t) (MV | (up_down ? MY : MX)));
     orientation = LANDSCAPE;
 }
 
@@ -274,16 +276,16 @@ void lcd_init(void)
 {
     esp_err_t ret;
     spi_bus_config_t buscfg = {
-        .miso_io_num = -1,
         .mosi_io_num = PIN_NUM_MOSI,
+        .miso_io_num = -1,
         .sclk_io_num = PIN_NUM_CLK,
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
         .max_transfer_sz = BUFFER_SIZE * 2,
     };
     spi_device_interface_config_t devcfg = {
-        .clock_speed_hz = SPI_MASTER_FREQ_20M,
         .mode = 0,                               // SPI mode 0
+        .clock_speed_hz = SPI_MASTER_FREQ_20M,
         .spics_io_num = PIN_NUM_CS,              // CS pin
         .queue_size = 7,                         // We want to be able to queue 7 transactions at a time
         .pre_cb = lcd_spi_pre_transfer_callback, // Specify pre-transfer callback to handle D/C line
@@ -296,23 +298,23 @@ void lcd_init(void)
     ESP_ERROR_CHECK(ret);
 
     // Initialize non-SPI GPIOs
-    gpio_set_direction(PIN_NUM_DC, GPIO_MODE_OUTPUT);
-    gpio_set_direction(PIN_NUM_RST, GPIO_MODE_OUTPUT);
-    gpio_set_direction(PIN_NUM_BCKL, GPIO_MODE_OUTPUT);
+    gpio_set_direction((gpio_num_t) PIN_NUM_DC, GPIO_MODE_OUTPUT);
+    gpio_set_direction((gpio_num_t)PIN_NUM_RST, GPIO_MODE_OUTPUT);
+    gpio_set_direction((gpio_num_t)PIN_NUM_BCKL, GPIO_MODE_OUTPUT);
 
     sigmadelta_config_t sigmadelta_cfg = {
         .channel = SIGMADELTA_CHANNEL_0,
-        .sigmadelta_prescale = 80,
         .sigmadelta_duty = 0,
+        .sigmadelta_prescale = 80,
         .sigmadelta_gpio = PIN_NUM_BCKL,
     };
     sigmadelta_config(&sigmadelta_cfg);
 
 
     // Reset the display
-    gpio_set_level(PIN_NUM_RST, 0);
+    gpio_set_level((gpio_num_t) PIN_NUM_RST, 0);
     delay(100);
-    gpio_set_level(PIN_NUM_RST, 1);
+    gpio_set_level((gpio_num_t) PIN_NUM_RST, 1);
     delay(100);
 
     lcd_landscape(0);
