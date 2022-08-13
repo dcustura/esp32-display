@@ -1,6 +1,8 @@
 #pragma once
 
 #include <stdlib.h>
+#include "driver/gpio.h"
+#include "driver/spi_master.h"
 
 #define LCD_LONG_WIDTH 240
 #define LCD_SHORT_WIDTH 135
@@ -35,31 +37,52 @@ struct print_control_t
     uint16_t background;
 };
 
-void lcd_init(void);
+typedef enum
+{
+    PORTRAIT,
+    ROTATED_PORTRAIT,
+    LANDSCAPE,
+    ROTATED_LANDSCAPE
+} lcd_orientation_t;
 
-void lcd_display_on(void);
+typedef struct {
+    spi_host_device_t spi_host;
+    gpio_num_t pin_spi_mosi;
+    gpio_num_t pin_spi_clock;
+    gpio_num_t pin_spi_cs;
+    gpio_num_t pin_dc;
+    gpio_num_t pin_reset;
+    gpio_num_t pin_backlight;
+} lcd_init_config_t;
 
-void lcd_brightness(int);
-
-#define LCD_HEIGHT lcd_get_height()
-int lcd_get_height(void);
-#define LCD_WIDTH lcd_get_width()
-int lcd_get_width(void);
-
-void lcd_landscape(int up_down);
-
-void lcd_portrait();
-
-void lcd_clear(uint16_t color);
-
-void lcd_print_char(struct print_control_t * handle, char c);
-
-void lcd_print(struct print_control_t * handle, char *str);
-
-void lcd_fill_rectangle(int x, int y, int width, int height, uint16_t color );
-
-void lcd_draw_rectangle(int x, int y, int width, int height, uint16_t color );
-
-void lcd_scroll_area(int y, int height);
-
-void lcd_scroll(int offset);
+class Lcd
+{
+    lcd_orientation_t orientation;
+    int height;
+    int width;
+    int xOffset;
+    int yOffset;
+    spi_device_handle_t device;
+    gpio_num_t dcPin;
+    void send(const void *, size_t, bool);
+    void addressSetX(int, int);
+    void addressSetY(int, int);
+    void setWriteFrame(int, int, int, int);
+    void printNormalChar(struct print_control_t *, char);
+    void printControlChar(struct print_control_t *, char);
+    void cursorAdvance(struct print_control_t *);
+public:
+    void init(lcd_init_config_t config, lcd_orientation_t orientation = LANDSCAPE);
+    void displayOn(void);
+    void brightness(int);
+    int getHeight(void);
+    int getWidth(void);
+    void setOrientation(lcd_orientation_t orientation);
+    void clear(uint16_t color);
+    void printChar(struct print_control_t* handle, char c);
+    void print(struct print_control_t* handle, const char* str);
+    void fillRectangle(int x, int y, int width, int height, uint16_t color);
+    void drawRectangle(int x, int y, int width, int height, uint16_t color);
+    void scrollArea(int y, int height);
+    void scroll(int offset);
+};
