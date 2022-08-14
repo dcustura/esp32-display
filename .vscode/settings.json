@@ -7,7 +7,8 @@
     "*.inc": "c",
     "*.ipp": "c",
     "chrono": "c",
-    "random": "cpp"
+    "random": "cpp",
+    "limits": "cpp"
   },
   "idf.openOcdConfigs": [
     "interface/ftdi/esp32_devkitj_v1.cfg",

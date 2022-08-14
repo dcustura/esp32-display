@@ -14,7 +14,6 @@
 
 void my_task(void* ignore)
 {
-    Lcd lcd;
 
 #define LCD_HOST HSPI_HOST
 
@@ -26,7 +25,7 @@ void my_task(void* ignore)
 #define PIN_NUM_RST 23
 #define PIN_NUM_BCKL 4
 
-    lcd.init((lcd_init_config_t) {
+    Lcd lcd = Lcd((lcd_init_config_t) {
         .spi_host = HSPI_HOST,
             .pin_spi_mosi = GPIO_NUM_19,
             .pin_spi_clock = GPIO_NUM_18,
@@ -39,34 +38,33 @@ void my_task(void* ignore)
     lcd.clear(WHITE);
     lcd.displayOn();
 
-    int lcdWidth = lcd.getWidth();
-    int lcdHeight = lcd.getHeight();
+    lcd.fillRectangle({ 20, 20 }, { 200, 100 }, BLUE);
 
-    while (1) {
-        int x = abs(rand()) % lcdWidth;
-        int y = abs(rand()) % lcdHeight;
-        int width = 1 + (abs(rand()) % (lcdWidth - x));
-        int height = 1 + (abs(rand()) % (lcdHeight - y));
+   // for (;;) delay(1000);
+
+    int lcdWidth = lcd.getSize().width;
+    int lcdHeight = lcd.getSize().height;
+
+    for (int i = 0; i < 1000; i++) {
+        point_t origin = { abs(rand()) % lcdWidth, abs(rand()) % lcdHeight };
+        box_size_t size = { 1 + (abs(rand()) % (lcdWidth - origin.x)), 1 + (abs(rand()) % (lcdHeight - origin.y)) };
         uint16_t color = rand() % 0xffff;
-        lcd.drawRectangle(x, y, width, height, color);
+        if (i % 2) {
+            lcd.drawRectangle(origin, size, color);
+        } else {
+            lcd.fillRectangle(origin, size, color);
+        }
     }
 
-    struct print_control_t pc = {
-        .x = 0,
-        .y = 0,
-        //.indent = 0,
-        .column_width = 13,
-        .line_height = 20,
-        .color = BLACK,
-        .background = WHITE,
-    };
+    std::string hello = "hello!";
 
-    lcd.print(&pc, "The quick brown fox jumps over the lazy dog!\n\n");
-    pc.color = GRAY;
-    lcd.print(&pc, "The Quick Brown Fox Jumps Over The Lazy Dog?\n");
+    lcd.setPrintColor(RED, GRAY);
+    lcd << "The quick brown fox jumps over the lazy dog! ";
+    lcd.setPrintColor(BLUE, BLACK);
+    lcd << "The Quick Brown Fox Jumps Over The Lazy Dog? " << hello << 123;
 
     // lcd_portrait();
-    // for (;;) delay(1000);
+    for (;;) delay(1000);
 
     lcd.scrollArea(0, 240);
     for (;;)
