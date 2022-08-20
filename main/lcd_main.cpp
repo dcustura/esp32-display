@@ -1,12 +1,12 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
+#include <string>
+#include <iostream>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
 #include "driver/gpio.h"
 #include "lcd.hpp"
+
+using namespace std;
 
 #define delay(milliseconds) vTaskDelay((milliseconds) / portTICK_RATE_MS)
 
@@ -34,48 +34,34 @@ void my_task(void* ignore)
             .pin_reset = GPIO_NUM_23,
             .pin_backlight = GPIO_NUM_4
     }, LANDSCAPE);
-
-    lcd.clear(WHITE);
+    lcd.clear(BLACK);
     lcd.displayOn();
 
-    lcd.fillRectangle({ 20, 20 }, { 200, 100 }, BLUE);
+    lcd.setPrintColor(WHITE, BLACK);
+    ScrollBuffer sb(15, 4);
 
-   // for (;;) delay(1000);
-
-    int lcdWidth = lcd.getSize().width;
-    int lcdHeight = lcd.getSize().height;
-
-    for (int i = 0; i < 1000; i++) {
-        point_t origin = { abs(rand()) % lcdWidth, abs(rand()) % lcdHeight };
-        box_size_t size = { 1 + (abs(rand()) % (lcdWidth - origin.x)), 1 + (abs(rand()) % (lcdHeight - origin.y)) };
-        uint16_t color = rand() % 0xffff;
-        if (i % 2) {
-            lcd.drawRectangle(origin, size, color);
-        } else {
-            lcd.fillRectangle(origin, size, color);
-        }
+    sb.setForegroundColor((color_t){16, 32, 16});
+    // color_t color = (color_t){ 0, 0, 0 };
+    for (int c = 0; c < 256; c++)
+    {
+        lcd.render(sb, ZERO_XY, { 240, 135 });
+        // sb.setForegroundColor(color);
+        // color.r++; color.g += 2; color.b++;
+        sb << (char) c;
+        delay(200);
     }
-
-    std::string hello = "hello!";
-
-    lcd.setPrintColor(RED, GRAY);
-    lcd << "The quick brown fox jumps over the lazy dog! ";
-    lcd.setPrintColor(BLUE, BLACK);
-    lcd << "The Quick Brown Fox Jumps Over The Lazy Dog? " << hello << 123;
-
-    // lcd_portrait();
     for (;;) delay(1000);
 
-    lcd.scrollArea(0, 240);
-    for (;;)
-    {
-        for (int i = 0; i < 240; i += 1)
-        {
-            lcd.scroll(i);
-            delay(20);
-            //lcd.brightness(i);
-        }
-    }
+    // for (int i = 0; i < 1000; i++) {
+    //     point_t origin = { abs(rand()) % lcdWidth, abs(rand()) % lcdHeight };
+    //     box_size_t size = { 1 + (abs(rand()) % (lcdWidth - origin.x)), 1 + (abs(rand()) % (lcdHeight - origin.y)) };
+    //     uint16_t color = rand() % 0xffff;
+    //     if (i % 2) {
+    //         lcd.drawRectangle(origin, size, color);
+    //     } else {
+    //         lcd.fillRectangle(origin, size, color);
+    //     }
+    // }
 }
 
 extern "C" void app_main(void)

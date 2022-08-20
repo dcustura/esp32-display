@@ -1,7 +1,6 @@
 set(srcs
-   lcd.cpp
+   ScrollBuffer.cpp
     )
 
 idf_component_register(SRCS ${srcs}
-                    REQUIRES scrollbuffer
                     INCLUDE_DIRS .)

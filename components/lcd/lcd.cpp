@@ -9,11 +9,16 @@
 #include "driver/sigmadelta.h"
 
 #include "lcd.hpp"
-#include "font_12x16.hpp"
 
+#include "font_16x32.hpp"
+#define FONT font_16x32
+#define FONT_WIDTH 16
+#define FONT_HEIGHT 32
 
-#define FONT_WIDTH 12
-#define FONT_HEIGHT 16
+// #include "font_12x16.hpp"
+// #define font_12x16
+// #define FONT_WIDTH 12
+// #define FONT_HEIGHT 16
 
 enum LcdCommand {
     CMD_WRITE_DATA = 0x2C,
@@ -30,31 +35,22 @@ enum LcdCommand {
 
 point_t operator+(point_t point, box_size_t size)
 {
-    return (point_t) { point.x + size.width, point.y + size.height };
+    return (point_t) { point.x + (int) size.width, point.y + (int) size.height };
+}
+
+point_t operator+(point_t origin, point_t point)
+{
+    return (point_t) { origin.x + point.x, origin.y + point.y };
 }
 
 point_t operator-(point_t point, int amount)
 {
-    return (point_t) { point.x - amount, point.y - amount};
+    return (point_t) { point.x - amount, point.y - amount };
 }
 
 struct Lcd::PrintControl {
-    point_t position;
-    point_t minPosition;
-    point_t maxPosition;
-    box_size_t spacing = { 14, 20 };
+    box_size_t spacing = { FONT_WIDTH, FONT_HEIGHT };
     uint16_t color = WHITE, background = BLACK;
-
-    void setFrame(point_t origin, box_size_t size)
-    {
-        position = origin;
-        minPosition = origin;
-        maxPosition = origin + size - 1;
-    }
-
-    void setXY(point_t newPosition) {
-        position = newPosition;
-    }
 
     void setColor(uint16_t newColor, uint16_t newBackground)
     {
@@ -65,25 +61,6 @@ struct Lcd::PrintControl {
     void setSpacing(box_size_t newSpacing)
     {
         spacing = newSpacing;
-    }
-
-    void cursorAdvanceRow()
-    {
-        position.x = minPosition.x;
-        position.y += spacing.height;
-        if (position.y + FONT_HEIGHT > maxPosition.y)
-        {
-            position.y = minPosition.y;
-        }
-    }
-
-    void cursorAdvance()
-    {
-        position.x += spacing.width;
-        if (position.x + FONT_WIDTH > maxPosition.x)
-        {
-            cursorAdvanceRow();
-        }
     }
 };
 
@@ -228,6 +205,10 @@ void set16(uint16_t* dst, uint16_t color, int count)
 
 void Lcd::fillRectangle(point_t origin, box_size_t size, uint16_t color)
 {
+    if (size.width < 1 || size.height < 1)
+    {
+        return;
+    }
     int num_pixels = size.width * size.height;
     set16(pixel_buffer, color, min(BUFFER_SIZE, num_pixels));
     setWriteFrame(origin, size);
@@ -246,18 +227,8 @@ void Lcd::drawRectangle(point_t origin, box_size_t size, uint16_t color)
     box_size_t horizontalLineSize = (box_size_t){ size.width, 1 };
     fillRectangle(origin, horizontalLineSize, color);
     fillRectangle(origin, verticalLineSize, color);
-    fillRectangle(origin + horizontalLineSize - 1, verticalLineSize , color);
+    fillRectangle(origin + horizontalLineSize - 1, verticalLineSize, color);
     fillRectangle(origin + verticalLineSize - 1, horizontalLineSize, color);
-}
-
-void Lcd::setPrintFrame(point_t origin, box_size_t size)
-{
-    printControl->setFrame(origin, size);
-}
-
-void Lcd::setPrintXY(point_t position)
-{
-    printControl->setXY(position);
 }
 
 void Lcd::setPrintColor(uint16_t color, uint16_t background)
@@ -270,97 +241,71 @@ void Lcd::setPrintSpacing(box_size_t spacing)
     printControl->setSpacing(spacing);
 }
 
-void Lcd::printNormalChar(char c)
+void Lcd::send(uint16_t color)
 {
-    const uint16_t* glyph = font_12x16[(int)(c - '!')];
-    uint16_t swapped_color = SPI_SWAP_DATA_TX(printControl->color, 16);
-    uint16_t swapped_background = SPI_SWAP_DATA_TX(printControl->background, 16);
-    setWriteFrame(printControl->position, printControl->spacing);
-    cmd^ CMD_WRITE_DATA;
-    for (int row = 0; row < FONT_HEIGHT; row++)
+    pixel_buffer[bufferIndex++] = SPI_SWAP_DATA_TX(color, 16);
+    if (bufferIndex >= BUFFER_SIZE)
     {
-        for (int col = 0; col < printControl->spacing.width; col++)
+        flush();
+    }
+}
+
+void Lcd::flush()
+{
+    if (bufferIndex > 0)
+    {
+        send((uint16_t*)pixel_buffer, bufferIndex * 2);
+        bufferIndex = 0;
+    }
+}
+
+void Lcd::render(ScrollBuffer& sb, point_t origin, box_size_t size)
+{
+    box_size_t charSize = printControl->spacing;
+    auto paddingTop = (charSize.height - FONT_HEIGHT) / 2;
+    auto paddingLeft = (charSize.width - FONT_WIDTH) / 2;
+    area_t dirtyArea = sb.getDirtyArea();
+    point_t dirtyFrom = {
+        .x = (int) min(size.width, dirtyArea.fromCol * charSize.width),
+        .y = (int) min(size.height, dirtyArea.fromRow * charSize.height)
+    };
+    point_t dirtyTo = {
+        .x = (int) min(size.width, dirtyArea.toCol * charSize.width),
+        .y = (int) min(size.height, dirtyArea.toRow * charSize.height)
+    };
+    box_size_t dirtySize = {
+        .width = (dirtyArea.toCol - dirtyArea.fromCol) * charSize.width,
+        .height = (dirtyArea.toRow - dirtyArea.fromCol) * charSize.height
+    };
+    setWriteFrame(origin + dirtyFrom, dirtySize);
+    cmd^ CMD_WRITE_DATA;
+    int bufferIndex = 0;
+    for (int y = dirtyFrom.y; y < dirtyTo.y; y++)
+    {
+        unsigned int row = y / charSize.height;
+        unsigned int charRow = y % charSize.height;
+        for (int x = dirtyFrom.x; x < dirtyTo.x; x++)
         {
-            pixel_buffer[col] = swapped_background;
-            if (col < FONT_WIDTH && ((glyph[row] << col) & 0x8000))
+            unsigned int col = x / charSize.width;
+            unsigned int charCol = x % charSize.width;
+            color_char_t colorChar = sb.getColorCharAt(row, col);
+            char c = colorChar.c;
+            uint16_t foreground = colorChar.foreground.to16();
+            uint16_t background = colorChar.background.to16();
+            if (charRow < paddingTop || charRow >= FONT_HEIGHT + paddingTop
+                || charCol < paddingLeft || charCol >= FONT_WIDTH + paddingLeft)
             {
-                pixel_buffer[col] = swapped_color;
+                send(background);
+            }
+            else
+            {
+                uint16_t glyphLine = FONT[(int)c * FONT_HEIGHT + charRow - paddingTop];
+                send((glyphLine << (charCol - paddingLeft)) & 0x8000 ? foreground : background);
             }
         }
-        send(pixel_buffer, printControl->spacing.width * 2);
     }
-    if (FONT_HEIGHT < printControl->spacing.height)
-    {
-        set16(pixel_buffer, printControl->background, printControl->spacing.width);
-    }
-    for (int i = FONT_HEIGHT; i < printControl->spacing.height; i++)
-    {
-        send(pixel_buffer, printControl->spacing.width * 2);
-    }
-    printControl->cursorAdvance();
-}
-
-void Lcd::printControlChar(char c)
-{
-    switch (c)
-    {
-    case '\n':
-        printControl->cursorAdvanceRow();
-        return;
-    case '\r':
-        printControl->position.x = printControl->minPosition.x;
-        return;
-    default:
-        fillRectangle(printControl->position, printControl->spacing, printControl->background);
-        printControl->cursorAdvance();
-        return;
-    }
-}
-
-void Lcd::printChar(char c)
-{
-    if (c > ' ')
-    {
-        printNormalChar(c);
-    }
-    else
-    {
-        printControlChar(c);
-    }
-}
-
-void Lcd::print(const char* str)
-{
-    for (const char* ptr = str; *ptr != 0; ptr++)
-    {
-        printChar(*ptr);
-    }
-}
-
-Lcd& Lcd::operator<<(const char* str)
-{
-    print(str);
-    return *this;
-}
-
-Lcd& Lcd::operator<<(char c)
-{
-    printChar(c);
-    return *this;
-}
-
-Lcd& Lcd::operator<<(std::string str)
-{
-    for (char c : str)
-    {
-        printChar(c);
-    }
-    return *this;
-}
-
-Lcd& Lcd::operator<<(int num)
-{
-    return *this << std::to_string(num);
+    flush();
+    sb.resetDirty();
 }
 
 void Lcd::clear(uint16_t color)
@@ -397,7 +342,7 @@ void Lcd::setOrientation(lcd_orientation_t orientation) {
     case ROTATED_PORTRAIT:
         cmd^ CMD_SET_ADDRESS_MODE, (uint8_t)(orientation == ROTATED_PORTRAIT ? MX | MY : 0);
         size = { LCD_SHORT_WIDTH, LCD_LONG_WIDTH };
-        xOffset = 53;
+        xOffset = 52;
         yOffset = 40;
         break;
     }
@@ -416,7 +361,7 @@ void Lcd::scroll(int offset)
 }
 
 Lcd::Lcd(lcd_init_config_t config, lcd_orientation_t orientation)
-    : printControl(new PrintControl)
+    : bufferIndex(0), printControl(new PrintControl)
 {
     esp_err_t ret;
     spi_bus_config_t buscfg = {
@@ -462,7 +407,6 @@ Lcd::Lcd(lcd_init_config_t config, lcd_orientation_t orientation)
     delay(100);
 
     setOrientation(orientation);
-    printControl->setFrame(ZERO_XY, size);
     /* Interface Pixel Format, 16bits/pixel for RGB/MCU interface */
     cmd^ CMD_SET_PIXEL_FORMAT, (uint8_t)0x55;
     /* Display Inversion On */

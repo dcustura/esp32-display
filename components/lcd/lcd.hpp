@@ -5,6 +5,7 @@
 #include <string>
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
+#include "ScrollBuffer.hpp"
 
 #define LCD_LONG_WIDTH 240
 #define LCD_SHORT_WIDTH 135
@@ -53,7 +54,7 @@ typedef struct {
 const point_t ZERO_XY = { 0, 0 };
 
 typedef struct {
-    int width, height;
+    unsigned int width, height;
 } box_size_t;
 
 class Lcd
@@ -63,35 +64,29 @@ class Lcd
     box_size_t size;
     int xOffset;
     int yOffset;
+    int bufferIndex;
     spi_device_handle_t device;
     gpio_num_t dcPin;
     std::unique_ptr<PrintControl> printControl;
     void send(const void *, size_t, bool);
+    void send(uint16_t);
+    void flush();
     void addressSetX(int, int);
     void addressSetY(int, int);
     void setWriteFrame(point_t, box_size_t);
-    void printNormalChar(char);
-    void printControlChar(char);
 public:
     Lcd(lcd_init_config_t config, lcd_orientation_t orientation = LANDSCAPE);
     ~Lcd();
-    void displayOn(void);
+    void displayOn();
     void brightness(int);
-    box_size_t getSize(void);
+    box_size_t getSize();
     void setOrientation(lcd_orientation_t orientation);
     void clear(uint16_t color);
-    void setPrintFrame(point_t origin, box_size_t size);
-    void setPrintXY(point_t origin);
     void setPrintColor(uint16_t color, uint16_t background);
     void setPrintSpacing(box_size_t spacing);
-    void printChar(char c);
-    void print(const char* str);
-    Lcd& operator<<(const char* str);
-    Lcd& operator<<(char c);
-    Lcd& operator<<(std::string str);
-    Lcd& operator<<(int num);
     void fillRectangle(point_t origin, box_size_t size, uint16_t color);
     void drawRectangle(point_t origin, box_size_t size, uint16_t color);
+    void render(ScrollBuffer &sb, point_t origin, box_size_t size);
     void scrollArea(int y, int height);
     void scroll(int offset);
 };
